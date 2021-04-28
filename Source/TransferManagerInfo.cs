@@ -1,4 +1,4 @@
-﻿using ColossalFramework;
+using ColossalFramework;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -752,6 +752,7 @@ namespace EnhancedDistrictServices
                     case ItemClass.Service.PublicTransport:
                         return (
                             (Settings.enableSelectOutsideConnection && info.GetAI() is OutsideConnectionAI) ||
+                            info.GetAI() is CargoStationAI ||
                             info.GetSubService() == ItemClass.SubService.PublicTransportPost ||
                             info.GetSubService() == ItemClass.SubService.PublicTransportTaxi);
 
@@ -815,6 +816,11 @@ namespace EnhancedDistrictServices
             if ((instance.m_buildings.m_buffer[building].m_flags & Building.Flags.Created) != Building.Flags.None)
             {
                 var info = instance.m_buildings.m_buffer[building].Info;
+                if (info.GetAI() is CargoStationAI)
+                {
+                    return true;
+                }
+
                 switch (info?.GetService())
                 {
                     case ItemClass.Service.Electricity:
@@ -859,44 +865,59 @@ namespace EnhancedDistrictServices
 
         public static bool IsValidSupplyChainLink(ushort source, ushort destination)
         {
+            var sourceInfo = BuildingManager.instance.m_buildings.m_buffer[source].Info;
+            var sourceIsCargoStation = sourceInfo?.GetAI() is CargoStationAI;
             var sourceMaterial = GetSupplyBuildingOutputMaterial(source);
-            if (sourceMaterial == TransferManager.TransferReason.None)
+            if (!sourceIsCargoStation && sourceMaterial == TransferManager.TransferReason.None)
             {
                 return false;
             }
 
-            var info = BuildingManager.instance.m_buildings.m_buffer[destination].Info;
-            if (info?.GetService() == ItemClass.Service.Electricity && info?.GetAI() is PowerPlantAI)
+            var destinationInfo = BuildingManager.instance.m_buildings.m_buffer[destination].Info;
+            if (destinationInfo?.GetAI() is CargoStationAI)
             {
-                return 
+                // Anything can go to a cargo station!
+                return true;
+            }
+
+            if (destinationInfo?.GetService() == ItemClass.Service.Electricity && destinationInfo?.GetAI() is PowerPlantAI)
+            {
+                return
+                    sourceIsCargoStation ||
                     sourceMaterial == TransferManager.TransferReason.Coal ||
                     sourceMaterial == TransferManager.TransferReason.Petrol;
             }
 
-            if (info?.GetService() == ItemClass.Service.Monument && info?.gameObject?.name == "ChirpX Launch Control Center")
+            if (destinationInfo?.GetService() == ItemClass.Service.Monument && destinationInfo?.gameObject?.name == "ChirpX Launch Control Center")
             {
                 return
+                    sourceIsCargoStation ||
                     sourceMaterial == TransferManager.TransferReason.Coal ||
                     sourceMaterial == TransferManager.TransferReason.Petrol;
             }
 
-            if ((info?.GetService() == ItemClass.Service.PlayerIndustry || info?.GetService() == ItemClass.Service.Fishing) && info?.GetAI() is ProcessingFacilityAI processingFacilityAI)
+            if ((destinationInfo?.GetService() == ItemClass.Service.PlayerIndustry || destinationInfo?.GetService() == ItemClass.Service.Fishing) && destinationInfo?.GetAI() is ProcessingFacilityAI processingFacilityAI)
             {
                 return
+                    sourceIsCargoStation ||
                     processingFacilityAI.m_inputResource1 == sourceMaterial ||
                     processingFacilityAI.m_inputResource2 == sourceMaterial ||
                     processingFacilityAI.m_inputResource3 == sourceMaterial ||
                     processingFacilityAI.m_inputResource4 == sourceMaterial;
             }
 
-            if (info?.GetService() == ItemClass.Service.PlayerIndustry && info?.GetAI() is WarehouseAI warehouseAI)
+            if (destinationInfo?.GetService() == ItemClass.Service.PlayerIndustry && destinationInfo?.GetAI() is WarehouseAI warehouseAI)
             {
-                return GetSupplyBuildingOutputMaterial(destination) == sourceMaterial;
+                return
+                    sourceIsCargoStation ||
+                    GetSupplyBuildingOutputMaterial(destination) == sourceMaterial;
             }
 
-            if (info?.GetService() == ItemClass.Service.Water && info?.GetAI() is HeatingPlantAI)
+            if (destinationInfo?.GetService() == ItemClass.Service.Water && destinationInfo?.GetAI() is HeatingPlantAI)
             {
-                return sourceMaterial == TransferManager.TransferReason.Petrol;
+                return
+                    sourceIsCargoStation ||
+                    sourceMaterial == TransferManager.TransferReason.Petrol;
             }
 
             return false;
